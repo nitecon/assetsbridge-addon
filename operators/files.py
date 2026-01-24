@@ -52,5 +52,46 @@ def get_object_export_path(ob_path):
     return base_obj_path + ob_path
 
 
+ADDON_NAME = "AssetsBridge"
+
+
+def get_addon_preferences():
+    """Returns the addon preferences, handling the addon name correctly."""
+    return bpy.context.preferences.addons[ADDON_NAME].preferences
+
+
 def get_asset_root():
-    return clean_path(os.path.dirname(bpy.context.preferences.addons['AssetsBridge'].preferences.filepaths[0].path))
+    return clean_path(os.path.dirname(get_addon_preferences().filepaths[0].path))
+
+
+def get_bridge_directory():
+    """Returns the configured bridge directory path."""
+    paths = get_addon_preferences().filepaths
+    if paths and paths[0].path:
+        return clean_path(os.path.dirname(paths[0].path))
+    return ""
+
+
+def get_from_unreal_path():
+    """Returns the path for the from-unreal.json file (Unreal → Blender direction)."""
+    bridge_dir = get_bridge_directory()
+    if bridge_dir:
+        return os.path.join(bridge_dir, "from-unreal.json")
+    return ""
+
+
+def get_from_blender_path():
+    """Returns the path for the from-blender.json file (Blender → Unreal direction)."""
+    bridge_dir = get_bridge_directory()
+    if bridge_dir:
+        return os.path.join(bridge_dir, "from-blender.json")
+    return ""
+
+
+def is_bridge_configured():
+    """Checks if the bridge directory is properly configured."""
+    paths = get_addon_preferences().filepaths
+    if not paths or not paths[0].path:
+        return False
+    default_path = "//AssetsBridge.json"
+    return paths[0].path != default_path and paths[0].path != ""

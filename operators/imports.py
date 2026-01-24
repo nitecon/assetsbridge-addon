@@ -20,7 +20,7 @@
 import bpy
 
 from .fbx import *
-from .files import read_bridge_file
+from .files import read_bridge_file, get_from_unreal_path, is_bridge_configured
 from .objects import *
 
 
@@ -54,19 +54,29 @@ class BridgedImport(bpy.types.Operator):
         return {'FINISHED'}
 
     def retrieve_task_task_file_path(self, context):
-        """This function retrieves the task file path. If the path is not specified, it returns
-                an empty string and logs an error message. It ensures that the AssetsBridge Addon Preferences are configured properly.
-                """
-        paths = bpy.context.preferences.addons["AssetsBridge"].preferences.filepaths
-        task_task_file_path = paths[0].path if paths else "//AssetsBridge.json"
-        if task_task_file_path in ["", "//AssetsBridge.json"]:
-            self.report({"ERROR"}, "Please configure AssetsBridge Addon Preferences properly.")
+        """Returns the path to from-unreal.json for importing assets from Unreal.
+        Ensures the AssetsBridge Addon Preferences are configured properly.
+        """
+        if not is_bridge_configured():
+            self.report({"ERROR"}, "Please configure AssetsBridge Addon Preferences to point to the bridge directory.")
             return ""
-        return task_task_file_path
+        
+        from_unreal_path = get_from_unreal_path()
+        if not from_unreal_path:
+            self.report({"ERROR"}, "Could not determine from-unreal.json path.")
+            return ""
+        
+        import os
+        if not os.path.exists(from_unreal_path):
+            self.report({"ERROR"}, f"Import file not found: {from_unreal_path}. Export from Unreal first.")
+            return ""
+        
+        return from_unreal_path
 
     def process_and_import_object(self, item, operation):
         # Determine the collection hierarchy based on the internal path
-        collections_hierarchy = item["internalPath"].split('/')
+        # Filter empty strings from split (handles leading slash in paths like "/Assets/...")
+        collections_hierarchy = [p for p in item["internalPath"].split('/') if p]
         root_collection = self.ensure_collection_hierarchy(collections_hierarchy)
 
         # Import the object
@@ -76,8 +86,15 @@ class BridgedImport(bpy.types.Operator):
 
         # Process the imported objects
         imported_objs = [obj for obj in bpy.context.selected_objects]
+        
+        # Find the root object of the import hierarchy
+        root_obj = self.find_import_root(imported_objs, item_type)
+        
         for obj in imported_objs:
             self.set_object_custom_properties(obj, item)
+            # Mark the root object for export identification
+            obj["AB_isExportRoot"] = (obj == root_obj)
+            
             if obj.name not in root_collection.objects:
                 root_collection.objects.link(obj)
                 bpy.context.collection.objects.unlink(obj)
@@ -85,6 +102,37 @@ class BridgedImport(bpy.types.Operator):
                     set_world_scale(obj, item, operation)
                     set_world_rotation(obj, item, operation)
                     set_world_location(obj, item, operation)
+    
+    def find_import_root(self, imported_objs, item_type):
+        """
+        Finds the root object of an imported asset hierarchy.
+        For SkeletalMesh: prefer EMPTY parent, then ARMATURE, then MESH
+        For StaticMesh: prefer MESH
+        """
+        if item_type == "SkeletalMesh":
+            # First look for an EMPTY (typical root for skeletal imports)
+            for obj in imported_objs:
+                if obj.type == "EMPTY" and obj.parent is None:
+                    return obj
+            # Then look for ARMATURE without parent
+            for obj in imported_objs:
+                if obj.type == "ARMATURE" and obj.parent is None:
+                    return obj
+            # Fall back to any parentless MESH
+            for obj in imported_objs:
+                if obj.type == "MESH" and obj.parent is None:
+                    return obj
+        else:
+            # StaticMesh - prefer MESH
+            for obj in imported_objs:
+                if obj.type == "MESH" and obj.parent is None:
+                    return obj
+        
+        # Last resort: return any parentless object or first object
+        for obj in imported_objs:
+            if obj.parent is None:
+                return obj
+        return imported_objs[0] if imported_objs else None
 
     def get_top_collection(self):
         """
@@ -106,16 +154,14 @@ class BridgedImport(bpy.types.Operator):
 
     def ensure_collection_hierarchy(self, collections_hierarchy):
         """
-        Adjusts 'collections_hierarchy' if the first element is 'Assets' and
-        finds or creates the specified collection hierarchy under the top 'Collection'.
+        Creates the collection hierarchy under the top-level 'Collection'.
+        Preserves the original Unreal path structure (e.g., Assets/Wearables/...).
         """
-        if collections_hierarchy[0] == "Assets":
-            collections_hierarchy[0] = "Collection"
-
         # Ensure the hierarchy starts from a top-level 'Collection'
         parent_collection = self.get_top_collection()
 
-        for collection_name in collections_hierarchy[1:]:  # Skip the first element since it's already handled
+        # Create the full hierarchy under Collection, preserving original structure
+        for collection_name in collections_hierarchy:
             found_collection = False
             for coll in parent_collection.children:
                 if coll.name == collection_name:
@@ -136,3 +182,8 @@ class BridgedImport(bpy.types.Operator):
         obj["AB_relativeExportPath"] = item.get("relativeExportPath", "")
         obj["AB_exportLocation"] = item.get("exportLocation", "")
         obj["AB_stringType"] = item.get("stringType", "")
+        obj["AB_shortName"] = item.get("shortName", "")
+        obj["AB_objectMaterials"] = item.get("objectMaterials", [])
+        # Preserve skeleton path for SkeletalMesh reimport
+        if item.get("skeleton"):
+            obj["AB_skeleton"] = item.get("skeleton", "")

@@ -20,15 +20,15 @@
 
 import bpy
 from bpy.props import StringProperty, CollectionProperty, BoolProperty, FloatProperty
-from bpy_types import PropertyGroup, AddonPreferences
+from bpy.types import PropertyGroup, AddonPreferences
 
 from . import operators
 
 bl_info = {
     "name": "AssetsBridge",
     "author": "Nitecon Studios LLC.",
-    "version": (1, 0, 0),
-    "blender": (4, 0, 0),
+    "version": (1, 1, 0),
+    "blender": (5, 0, 0),
     "location": "View3D > Toolbar > AssetsBridge",
     "description": "AssetsBridge provides bi directional integration with unreal engine.",
     "warning": "",
@@ -89,7 +89,8 @@ class AssetsBridgePreferences(AddonPreferences):
         type=AssetBridgeFilePaths)
 
     def draw(self, context):
-        self.layout.label(text="Please browse to the AssetsBridge task file.")
+        self.layout.label(text="Browse to any file in the AssetsBridge directory.")
+        self.layout.label(text="The addon will use from-unreal.json (import) and from-blender.json (export).")
         for i in self.filepaths:
             if i.display:
                 self.layout.prop(i, "path")
@@ -111,15 +112,14 @@ class AssetsBridgePanel(bpy.types.Panel):
         layout = self.layout
 
         row = layout.row()
-        row.label(text="Import items from unreal export.")
+        row.label(text="Import from Unreal (from-unreal.json)")
         row = layout.row()
-        row.operator(operators.BridgedImport.bl_idname, text="Import Objects", icon='SPHERE')
+        row.operator(operators.BridgedImport.bl_idname, text="Import Objects", icon='IMPORT')
         row = layout.row()
-        row.label(text="Export items for import in unreal")
+        row.label(text="Export to Unreal (from-blender.json)")
 
-        # add a property for export operator to use for the path name
         row = layout.row()
-        row.operator(operators.BridgedExport.bl_idname, text="Export Selected", icon='SPHERE')
+        row.operator(operators.BridgedExport.bl_idname, text="Export Selected", icon='EXPORT')
 
 
 _class_registers = [

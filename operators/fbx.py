@@ -130,18 +130,20 @@ def get_unreal_skeletal_export_opts():
     export_opts = {
         "use_selection": True,  # only export selected objects
         "use_mesh_modifiers": True,  # apply mesh modifiers
-        "use_metadata": True,  # don't include metadata
-        "mesh_smooth_type": "FACE",  # don't smooth meshes
+        "use_metadata": True,  # include metadata
+        "mesh_smooth_type": "FACE",  # face smoothing
         "use_subsurf": False,  # don't apply subsurface modifiers
         "use_mesh_edges": False,  # don't include mesh edges
         "use_tspace": True,  # include texture space data
         "use_armature_deform_only": False,  # include full armature deformations
-        "add_leaf_bones": False,  # add leaf bones for armatures
+        "add_leaf_bones": False,  # don't add leaf bones for armatures
         "global_scale": 1.0,  # don't change the global scale
-        "path_mode": "AUTO",  # set path mode to "AUTO" to automatically determine the best path mode
-        "bake_space_transform": False,  # don't bake space transform matrices
+        "path_mode": "AUTO",  # auto path mode
+        "bake_space_transform": False,  # NEVER bake transforms for armatures
         "use_custom_props": True,  # include custom properties
-        "axis_forward": "Y",  # set forward axis to "-Z"
-        "axis_up": "Z",  # set up axis to "Y
+        "axis_forward": "-Y",  # forward axis -Y for Unreal
+        "axis_up": "Z",  # up axis Z
+        "primary_bone_axis": "Y",  # primary bone axis Y (Blender's bone direction)
+        "secondary_bone_axis": "X",  # secondary bone axis X
     }
     return export_opts

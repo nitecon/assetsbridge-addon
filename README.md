@@ -1,5 +1,9 @@
 # AssetsBridge Blender Addon
 
+**Version:** 1.1.0  
+**Blender:** 5.0+  
+**Unreal Engine:** 5.7+
+
 ## Installation
 1. Go to the "Releases" section of this repository.
 2. Download the latest version of the AssetsBridge plugin.
@@ -7,12 +11,37 @@
 4. Click on the "Install" button and select the downloaded plugin file.
 5. Activate the AssetsBridge plugin by checking the box next to it.
 
+## Configuration
+1. Go to `Edit -> Preferences -> Add-ons -> AssetsBridge`.
+2. Browse to **any file** in your AssetsBridge exchange directory.
+3. The addon will automatically use the directory containing that file.
+
+## Bidirectional JSON System
+
+The addon uses distinct JSON files to indicate pipeline directionality:
+
+| Direction | File | Writer | Reader |
+|-----------|------|--------|--------|
+| Unreal → Blender | `from-unreal.json` | Unreal Export | Blender Import |
+| Blender → Unreal | `from-blender.json` | Blender Export | Unreal Import |
+
+### Import (from Unreal)
+- Reads `from-unreal.json` from the configured bridge directory
+- File must exist (exported from Unreal first)
+- Creates collection hierarchy matching Unreal folder structure
+
+### Export (to Unreal)
+- Writes `from-blender.json` to the configured bridge directory
+- Exports selected meshes and skeletal meshes as FBX
+- Preserves world transforms for reimport
+
 ## Usage
-- After activating the plugin, set the location for the AssetsBridge JSON file that the plugin will read from. This file location can be configured in the plugin preferences.
-- The AssetsBridge plugin provides bi-directional integration with Unreal Engine, allowing for seamless asset transfer between Blender and Unreal Engine.
+1. **Import from Unreal:** Click "Import Objects" in the AssetsBridge panel (View3D > Toolbar > AssetsBridge)
+2. **Export to Unreal:** Select objects, then click "Export Selected"
 
 ## Capabilities
 - Import items from Unreal Engine exports.
-- Export selected items to a JSON task file for import in Unreal Engine.
+- Export selected items for import in Unreal Engine.
 - Ensure proper collection hierarchy in the Blender scene.
 - Adjust object properties for export and import processes.
+- Support for both StaticMesh (SM_) and SkeletalMesh (SKM_) assets.
