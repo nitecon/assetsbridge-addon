@@ -130,12 +130,13 @@ def get_unreal_skeletal_export_opts():
     export_opts = {
         "use_selection": True,  # only export selected objects
         "use_mesh_modifiers": True,  # apply mesh modifiers
+        "use_mesh_modifiers_render": True,  # use render settings for modifiers
         "use_metadata": True,  # include metadata
         "mesh_smooth_type": "FACE",  # face smoothing
         "use_subsurf": False,  # don't apply subsurface modifiers
         "use_mesh_edges": False,  # don't include mesh edges
         "use_tspace": True,  # include texture space data
-        "use_armature_deform_only": False,  # include full armature deformations
+        "use_armature_deform_only": False,  # export full skeleton hierarchy
         "add_leaf_bones": False,  # don't add leaf bones for armatures
         "global_scale": 1.0,  # don't change the global scale
         "path_mode": "AUTO",  # auto path mode
@@ -145,5 +146,13 @@ def get_unreal_skeletal_export_opts():
         "axis_up": "Z",  # up axis Z
         "primary_bone_axis": "Y",  # primary bone axis Y (Blender's bone direction)
         "secondary_bone_axis": "X",  # secondary bone axis X
+        "armature_nodetype": "NULL",  # don't add armature node wrapper
+        "bake_anim": True,  # export baked animation (required for shape keys)
+        "bake_anim_use_all_bones": True,  # key all bones
+        "bake_anim_use_nla_strips": False,  # don't split NLA strips
+        "bake_anim_use_all_actions": False,  # don't export all actions separately
+        "bake_anim_force_startend_keying": True,  # ensure start/end keyframes
+        "bake_anim_step": 1.0,  # sample every frame
+        "bake_anim_simplify_factor": 0.0,  # no simplification for accuracy
     }
     return export_opts

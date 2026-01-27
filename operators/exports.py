@@ -20,7 +20,7 @@ import os
 # ##### END GPL LICENSE BLOCK #####
 import bpy
 
-from .fbx import *
+from .gltf import *
 from .files import write_bridge_file, get_from_blender_path, is_bridge_configured, get_bridge_directory
 from .objects import *
 
@@ -206,12 +206,16 @@ class BridgedExport(bpy.types.Operator):
             armature_obj: The actual armature to export
             export_options: FBX export options
         """
-        from .objects import prepare_for_export, revert_export_mods
+        from .objects import prepare_armature_for_export, revert_armature_export
         
-        # Prepare and export the armature
-        prepare_for_export(armature_obj)
-        bpy.ops.export_scene.fbx(filepath=metadata_obj["AB_exportLocation"], **export_options)
-        revert_export_mods(armature_obj)
+        # Prepare armature - sets REST pose and preserves bind pose
+        prepare_armature_for_export(armature_obj)
+        
+        # Export the skeletal mesh
+        bpy.ops.export_scene.gltf(filepath=metadata_obj["AB_exportLocation"], **export_options)
+        
+        # Revert armature to original state
+        revert_armature_export(armature_obj)
         
         # Return export info using metadata from the root object
         return self.get_export_info(metadata_obj)
@@ -281,7 +285,7 @@ class BridgedExport(bpy.types.Operator):
             export_options (dict): Options for the export process.
         """
         prepare_for_export(obj)
-        bpy.ops.export_scene.fbx(filepath=obj["AB_exportLocation"], **export_options)
+        bpy.ops.export_scene.gltf(filepath=obj["AB_exportLocation"], **export_options)
         revert_export_mods(obj)
         return self.get_export_info(obj)
 
@@ -295,9 +299,8 @@ class BridgedExport(bpy.types.Operator):
         Returns:
             dict: Export information for the object.
         """
-        # Convert IDPropertyGroup to plain Python types for JSON serialization
-        raw_materials = obj.get("AB_objectMaterials", [])
-        materials = self.convert_to_serializable(raw_materials)
+        # Get current mesh materials - this captures any added/removed materials in Blender
+        materials = self.get_current_materials(obj)
         if not materials:
             materials = [
                 {
@@ -306,6 +309,9 @@ class BridgedExport(bpy.types.Operator):
                     "internalPath": "/Engine/EngineMaterials/WorldGridMaterial"
                 }
             ]
+        
+        # Generate material changeset for tracking additions/removals
+        material_changeset = self.get_material_changeset(obj)
         
         ob_info = {
             "model": str(obj.get("AB_model", "")),
@@ -334,10 +340,121 @@ class BridgedExport(bpy.types.Operator):
                 }
             },
             "objectMaterials": materials,
+            "materialChangeset": material_changeset,
         }
 
         return ob_info
     
+    def get_current_materials(self, obj):
+        """
+        Gets the current materials from the mesh object.
+        Matches Blender materials to their original Unreal paths where possible.
+        """
+        materials = []
+        
+        # Find the mesh object (could be the object itself or a child)
+        mesh_obj = None
+        if obj.type == 'MESH':
+            mesh_obj = obj
+        else:
+            # Look for mesh in children (e.g., for EMPTY or ARMATURE roots)
+            for child in obj.children_recursive:
+                if child.type == 'MESH':
+                    mesh_obj = child
+                    break
+        
+        if not mesh_obj or not mesh_obj.data.materials:
+            # Fall back to stored materials if no mesh found
+            raw_materials = obj.get("AB_objectMaterials", [])
+            return self.convert_to_serializable(raw_materials)
+        
+        # Get stored materials for path lookup
+        stored_materials = {}
+        raw_stored = obj.get("AB_objectMaterials", [])
+        if raw_stored:
+            for mat in self.convert_to_serializable(raw_stored):
+                if isinstance(mat, dict):
+                    stored_materials[mat.get("name", "")] = mat
+        
+        # Build materials list from current mesh state
+        for idx, mat_slot in enumerate(mesh_obj.data.materials):
+            mat_name = mat_slot.name if mat_slot else f"Material_{idx}"
+            
+            # Try to find matching Unreal path from stored materials
+            stored_mat = stored_materials.get(mat_name, {})
+            internal_path = stored_mat.get("internalPath", "")
+            original_idx = stored_mat.get("idx", -1)
+            if not internal_path:
+                # Default path for new materials
+                internal_path = "/Engine/EngineMaterials/WorldGridMaterial"
+            
+            materials.append({
+                "name": mat_name,
+                "idx": idx,
+                "internalPath": internal_path,
+                "originalIdx": original_idx
+            })
+        
+        return materials
+    
+    def get_material_changeset(self, obj):
+        """
+        Generates a changeset comparing current mesh materials to original Unreal materials.
+        Returns dict with 'added', 'removed', and 'unchanged' lists.
+        """
+        current_materials = self.get_current_materials(obj)
+        
+        # Get original materials from stored property
+        stored_materials = {}
+        stored_list = []
+        raw_stored = obj.get("AB_objectMaterials", [])
+        if raw_stored:
+            stored_list = self.convert_to_serializable(raw_stored)
+            for mat in stored_list:
+                if isinstance(mat, dict):
+                    stored_materials[mat.get("name", "")] = mat
+        
+        current_names = {m["name"] for m in current_materials}
+        stored_names = set(stored_materials.keys())
+        
+        added = []
+        removed = []
+        unchanged = []
+        
+        # Find added materials (in current but not in stored)
+        for mat in current_materials:
+            if mat["name"] not in stored_names:
+                added.append({
+                    "name": mat["name"],
+                    "idx": mat["idx"],
+                    "internalPath": mat["internalPath"],
+                    "originalIdx": -1
+                })
+            else:
+                # Unchanged - restore original Unreal material
+                unchanged.append({
+                    "name": mat["name"],
+                    "idx": mat["idx"],
+                    "internalPath": stored_materials[mat["name"]].get("internalPath", ""),
+                    "originalIdx": stored_materials[mat["name"]].get("idx", mat["idx"])
+                })
+        
+        # Find removed materials (in stored but not in current)
+        for name, mat in stored_materials.items():
+            if name not in current_names:
+                removed.append({
+                    "name": name,
+                    "idx": -1,
+                    "internalPath": mat.get("internalPath", ""),
+                    "originalIdx": mat.get("idx", -1)
+                })
+        
+        return {
+            "added": added,
+            "removed": removed,
+            "unchanged": unchanged
+        }
+
     def convert_to_serializable(self, obj):
         """
         Recursively converts Blender IDPropertyGroup objects to plain Python types.
@@ -447,6 +564,7 @@ class BridgedExport(bpy.types.Operator):
     def get_export_path(self, obj):
         """
         Retrieves the export path for the given object and ensures the directory structure is in place.
+        Uses preserved AB_internalPath if available (from Unreal import), otherwise derives from collection.
 
         Parameters:
             obj (bpy.types.Object): The object for which the export path is to be retrieved.
@@ -455,10 +573,17 @@ class BridgedExport(bpy.types.Operator):
             str: The export path for the object.
         """
         base_path = self.get_ab_base_path()
-        collection_path = self.get_collection_hierarchy_path(obj)
+        # Prefer preserved internal path from Unreal import over collection hierarchy
+        # This prevents issues with Blender renaming collections (e.g., Meshes.001)
+        internal_path = obj.get("AB_internalPath", "")
+        if internal_path:
+            # Remove leading slash if present for path joining
+            collection_path = internal_path.lstrip("/")
+        else:
+            collection_path = self.get_collection_hierarchy_path(obj)
         # Use AB_shortName for filename (handles EMPTY roots in skeletal hierarchies)
         filename = obj.get("AB_shortName", obj.name)
-        export_path = os.path.join(base_path, collection_path, filename + ".fbx")
+        export_path = os.path.join(base_path, collection_path, filename + ".glb")
         normalized_export_path = os.path.normpath(export_path)
         os.makedirs(os.path.dirname(normalized_export_path), exist_ok=True)
         return normalized_export_path

@@ -19,9 +19,36 @@
 # ##### END GPL LICENSE BLOCK #####
 import bpy
 
-from .fbx import *
+from .gltf import get_general_import_opts
+from .objects import (
+    set_world_rotation,
+    set_world_scale,
+    set_world_location,
+)
+
+
+def configure_scene_for_unreal():
+    """
+    Configures scene unit settings for Unreal compatibility.
+    Sets Unit System to Metric and Unit Scale to 0.01.
+    Returns True if changes were made.
+    """
+    unit_settings = bpy.context.scene.unit_settings
+    changed = False
+    
+    if unit_settings.system != 'METRIC':
+        unit_settings.system = 'METRIC'
+        changed = True
+    
+    # Use tolerance for float comparison
+    if abs(unit_settings.scale_length - 0.01) > 0.001:
+        unit_settings.scale_length = 0.01
+        changed = True
+    
+    return changed
+
+
 from .files import read_bridge_file, get_from_unreal_path, is_bridge_configured
-from .objects import *
 
 
 class BridgedImport(bpy.types.Operator):
@@ -39,11 +66,15 @@ class BridgedImport(bpy.types.Operator):
         :param context: The context for the task execution
         :return: A set indicating the status of the task execution, can be {'CANCELLED'} or {'FINISHED'}
         """
-        task_file_path = self.retrieve_task_task_file_path(context)  # Rename to improve clarity
+        # Configure scene units for Unreal compatibility before import
+        if configure_scene_for_unreal():
+            self.report({"INFO"}, "Scene units configured for Unreal (Metric, Scale 0.01)")
+        
+        task_file_path = self.retrieve_task_task_file_path(context)
         if not task_file_path:
             return {'CANCELLED'}
 
-        task_data = read_bridge_file(task_file_path)  # Updated the function call with the new task_file_path
+        task_data = read_bridge_file(task_file_path)
         if not task_data or task_data['operation'] == "":
             self.report({"ERROR"}, "Invalid or empty task file.")
             return {'CANCELLED'}
@@ -82,13 +113,19 @@ class BridgedImport(bpy.types.Operator):
         # Import the object
         item_type = item["stringType"]
         import_options = get_general_import_opts(item_type)
-        bpy.ops.import_scene.fbx(filepath=item["exportLocation"], **import_options)
+        bpy.ops.import_scene.gltf(filepath=item["exportLocation"], **import_options)
 
         # Process the imported objects
         imported_objs = [obj for obj in bpy.context.selected_objects]
         
         # Find the root object of the import hierarchy
         root_obj = self.find_import_root(imported_objs, item_type)
+        
+        # Restore shape key names from JSON for skeletal meshes
+        if item_type == "SkeletalMesh":
+            morph_targets = item.get("morphTargets", [])
+            if morph_targets:
+                self.restore_shape_key_names(imported_objs, morph_targets)
         
         for obj in imported_objs:
             self.set_object_custom_properties(obj, item)
@@ -98,10 +135,16 @@ class BridgedImport(bpy.types.Operator):
             if obj.name not in root_collection.objects:
                 root_collection.objects.link(obj)
                 bpy.context.collection.objects.unlink(obj)
-                if item_type != "SkeletalMesh":
-                    set_world_scale(obj, item, operation)
-                    set_world_rotation(obj, item, operation)
-                    set_world_location(obj, item, operation)
+            
+            # Handle scaling based on mesh type:
+            # Both StaticMesh and SkeletalMesh use scale 1.0 (scene units handle conversion)
+            if item_type == "StaticMesh":
+                obj.scale = (1.0, 1.0, 1.0)
+                set_world_scale(obj, item, operation)  # Multiplies by worldData scale
+                set_world_rotation(obj, item, operation)
+                set_world_location(obj, item, operation)
+            elif item_type == "SkeletalMesh" and obj == root_obj:
+                obj.scale = (1.0, 1.0, 1.0)
     
     def find_import_root(self, imported_objs, item_type):
         """
@@ -173,6 +216,34 @@ class BridgedImport(bpy.types.Operator):
                 parent_collection.children.link(new_coll)
                 parent_collection = new_coll
         return parent_collection
+
+    def restore_shape_key_names(self, imported_objs, morph_targets):
+        """
+        Restores shape key names from the original morph target names stored in JSON.
+        glTF import names them as 'target_0', 'target_1', etc. - we rename them back.
+        """
+        for obj in imported_objs:
+            if obj.type != 'MESH':
+                continue
+            
+            if not obj.data.shape_keys:
+                continue
+            
+            key_blocks = obj.data.shape_keys.key_blocks
+            # Skip 'Basis' which is at index 0
+            shape_key_index = 0
+            for i, key_block in enumerate(key_blocks):
+                if key_block.name == "Basis":
+                    continue
+                
+                # Check if this is a target_N named shape key
+                if key_block.name.startswith("target_") or key_block.name.startswith("Key "):
+                    if shape_key_index < len(morph_targets):
+                        old_name = key_block.name
+                        new_name = morph_targets[shape_key_index]
+                        key_block.name = new_name
+                        print(f"AssetsBridge: Renamed shape key '{old_name}' -> '{new_name}'")
+                    shape_key_index += 1
 
     def set_object_custom_properties(self, obj, item):
         # Assuming 'item' is a dictionary containing all the necessary info

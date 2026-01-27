@@ -42,6 +42,7 @@ def set_world_location(obj, item, operation):
     if item['worldData'] is not None:
         if item['worldData']['location'] is not None:
             if operation == "UnrealExport":
+                # Convert Unreal cm to Blender meters
                 obj.location.x = item['worldData']['location']['x'] * 0.01
                 obj.location.y = item['worldData']['location']['y'] * 0.01
                 obj.location.z = item['worldData']['location']['z'] * 0.01
@@ -62,7 +63,9 @@ def prepare_for_export(obj):
     obj.location.x = 0
     obj.location.y = 0
     obj.location.z = 0
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=False)
+    # NEVER apply transforms to armatures - this breaks bind pose for Unreal
+    if obj.type != "ARMATURE":
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=False)
 
 
 def revert_export_mods(obj):
@@ -73,16 +76,14 @@ def revert_export_mods(obj):
 
 
 def set_world_scale(obj, item, operation):
+    """Apply world scale from Unreal. Note: For glTF imports, scale is handled in imports.py"""
     if item['worldData'] is not None:
         if item['worldData']['scale'] is not None:
-            if operation == "UnrealExport":
-                obj.scale.x = item['worldData']['scale']['x'] * 0.01
-                obj.scale.y = item['worldData']['scale']['y'] * 0.01
-                obj.scale.z = item['worldData']['scale']['z'] * 0.01
-            else:
-                obj.scale.x = item['worldData']['scale']['x']
-                obj.scale.y = item['worldData']['scale']['y']
-                obj.scale.z = item['worldData']['scale']['z']
+            # Just apply the scale multiplier from worldData (typically 1.0)
+            # The base mesh scale (0.01 for skeletal, 1.0 for static) is set in imports.py
+            obj.scale.x *= item['worldData']['scale']['x']
+            obj.scale.y *= item['worldData']['scale']['y']
+            obj.scale.z *= item['worldData']['scale']['z']
 
 
 def invert_world_data_rotation(obj, item):
@@ -234,3 +235,33 @@ def rotate_object(obj, x, y, z):
 def rotate_object_in_degrees(obj, x, y, z):
     obj.rotation_mode = 'XYZ'
     obj.rotation_euler = math.radians(x), math.radians(y), math.radians(z)
+
+
+def prepare_armature_for_export(armature_obj):
+    """Prepare armature for export - set REST pose for proper bind pose."""
+    if armature_obj is None or armature_obj.type != "ARMATURE":
+        return None
+    original_pose_position = armature_obj.data.pose_position
+    armature_obj.data.pose_position = 'REST'
+    armature_obj['AB_currentLocation'] = armature_obj.location.copy()
+    armature_obj['AB_currentRotation'] = armature_obj.rotation_euler.copy()
+    armature_obj['AB_originalPosePosition'] = original_pose_position
+    armature_obj.location = (0, 0, 0)
+    armature_obj.rotation_euler = (0, 0, 0)
+    bpy.context.view_layer.update()
+    return original_pose_position
+
+
+def revert_armature_export(armature_obj):
+    """Revert armature to original state after export."""
+    if armature_obj is None or armature_obj.type != "ARMATURE":
+        return
+    if 'AB_originalPosePosition' in armature_obj:
+        armature_obj.data.pose_position = armature_obj['AB_originalPosePosition']
+        del armature_obj['AB_originalPosePosition']
+    if 'AB_currentLocation' in armature_obj:
+        armature_obj.location = armature_obj['AB_currentLocation']
+        del armature_obj['AB_currentLocation']
+    if 'AB_currentRotation' in armature_obj:
+        armature_obj.rotation_euler = armature_obj['AB_currentRotation']
+        del armature_obj['AB_currentRotation']

@@ -27,7 +27,7 @@ from . import operators
 bl_info = {
     "name": "AssetsBridge",
     "author": "Nitecon Studios LLC.",
-    "version": (1, 1, 0),
+    "version": (1, 2, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Toolbar > AssetsBridge",
     "description": "AssetsBridge provides bi directional integration with unreal engine.",
@@ -120,6 +120,12 @@ class AssetsBridgePanel(bpy.types.Panel):
 
         row = layout.row()
         row.operator(operators.BridgedExport.bl_idname, text="Export Selected", icon='EXPORT')
+        
+        layout.separator()
+        row = layout.row()
+        row.label(text="Shape Key Tools")
+        row = layout.row()
+        row.operator(operators.TransferShapeKeys.bl_idname, text="Transfer Shape Keys", icon='SHAPEKEY_DATA')
 
 
 _class_registers = [

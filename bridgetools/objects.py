@@ -43,6 +43,7 @@ def set_world_location(obj, item, operation):
     if item['worldData'] is not None:
         if item['worldData']['location'] is not None:
             if operation == "UnrealExport":
+                # Convert Unreal cm to Blender meters
                 obj.location.x = item['worldData']['location']['x'] * 0.01
                 obj.location.y = item['worldData']['location']['y'] * 0.01
                 obj.location.z = item['worldData']['location']['z'] * 0.01
@@ -53,16 +54,14 @@ def set_world_location(obj, item, operation):
 
 
 def set_world_scale(obj, item, operation):
+    """Apply world scale from Unreal. Note: For glTF imports, scale is handled in imports.py"""
     if item['worldData'] is not None:
         if item['worldData']['scale'] is not None:
-            if operation == "UnrealExport":
-                obj.scale.x = item['worldData']['scale']['x'] * 0.01
-                obj.scale.y = item['worldData']['scale']['y'] * 0.01
-                obj.scale.z = item['worldData']['scale']['z'] * 0.01
-            else:
-                obj.scale.x = item['worldData']['scale']['x']
-                obj.scale.y = item['worldData']['scale']['y']
-                obj.scale.z = item['worldData']['scale']['z']
+            # Just apply the scale multiplier from worldData (typically 1.0)
+            # The base mesh scale (0.01 for skeletal, 1.0 for static) is set in imports.py
+            obj.scale.x *= item['worldData']['scale']['x']
+            obj.scale.y *= item['worldData']['scale']['y']
+            obj.scale.z *= item['worldData']['scale']['z']
 
 
 def invert_world_data_rotation(obj, item):
