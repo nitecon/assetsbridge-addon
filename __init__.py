@@ -123,9 +123,24 @@ class AssetsBridgePanel(bpy.types.Panel):
         
         layout.separator()
         row = layout.row()
-        row.label(text="Shape Key Tools")
+        row.label(text="Mesh Tools", icon='MESH_DATA')
+        
         row = layout.row()
-        row.operator(operators.TransferShapeKeys.bl_idname, text="Transfer Shape Keys", icon='SHAPEKEY_DATA')
+        row.operator(operators.SplitToNewMesh.bl_idname, text="Split to New Mesh", icon='MOD_EXPLODE')
+        
+        row = layout.row()
+        row.operator(operators.SetUnrealExportPath.bl_idname, text="Set Export Path", icon='FILE_FOLDER')
+        
+        row = layout.row()
+        row.operator(operators.AssignUE5Skeleton.bl_idname, text="Assign UE5 Skeleton", icon='ARMATURE_DATA')
+        
+        layout.separator()
+        row = layout.row()
+        row.label(text="Shape Key Tools", icon='SHAPEKEY_DATA')
+        row = layout.row()
+        row.operator(operators.TransferShapeKeys.bl_idname, text="Transfer All Shape Keys", icon='SHAPEKEY_DATA')
+        row = layout.row()
+        row.operator(operators.SelectiveTransferShapeKeys.bl_idname, text="Selective Transfer", icon='CHECKBOX_HLT')
 
 
 _class_registers = [

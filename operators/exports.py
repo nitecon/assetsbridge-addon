@@ -321,7 +321,7 @@ class BridgedExport(bpy.types.Operator):
             "shortName": str(obj.get("AB_shortName", obj.name)),
             "exportLocation": str(obj.get("AB_exportLocation", "")),
             "stringType": str(obj.get("AB_stringType", "")),
-            "skeleton": str(obj.get("AB_skeleton", "")),
+            "skeleton": str(obj.get("AB_ue5SkeletonPath", obj.get("AB_skeleton", ""))),
             "worldData": {
                 "rotation": {
                     "x": float(obj.rotation_euler.x),
