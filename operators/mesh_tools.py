@@ -377,11 +377,12 @@ class SplitToNewMesh(bpy.types.Operator):
         layout.separator()
         box = layout.box()
         box.label(text="Collection Preview:", icon='OUTLINER_COLLECTION')
+        box.label(text="Collection (/Game)")
         path_parts = [p for p in self.unreal_path.split('/') if p and p != 'Game']
         if path_parts:
             for i, part in enumerate(path_parts):
                 row = box.row()
-                row.label(text="  " * i + ("└ " if i > 0 else "") + part)
+                row.label(text="  " * (i + 1) + "└ " + part)
 
 
 class AssignUE5Skeleton(bpy.types.Operator):
@@ -521,14 +522,33 @@ class SetUnrealExportPath(bpy.types.Operator):
 
         return {'FINISHED'}
 
+    def get_top_collection(self):
+        """
+        Finds the top-level 'Collection' in the Blender scene.
+        If it does not exist, it creates one.
+        This matches the import behavior where /Game maps to 'Collection'.
+        """
+        for coll in bpy.data.collections:
+            if any(coll.name in scene.collection.children for scene in bpy.data.scenes):
+                if coll.name == "Collection":
+                    return coll
+
+        new_coll = bpy.data.collections.new("Collection")
+        bpy.context.scene.collection.children.link(new_coll)
+        return new_coll
+
     def get_or_create_collection_hierarchy(self, unreal_path):
-        """Creates collection hierarchy matching Unreal path structure."""
+        """
+        Creates collection hierarchy matching Unreal path structure.
+        /Game maps to 'Collection', then the rest of the path is nested under it.
+        Example: /Game/Assets/Wearables/Armor -> Collection > Assets > Wearables > Armor
+        """
         path_parts = [p for p in unreal_path.split('/') if p and p != 'Game']
 
         if not path_parts:
-            return bpy.context.scene.collection
+            return self.get_top_collection()
 
-        parent_collection = bpy.context.scene.collection
+        parent_collection = self.get_top_collection()
 
         for part in path_parts:
             existing = None
@@ -573,11 +593,12 @@ class SetUnrealExportPath(bpy.types.Operator):
         layout.separator()
         box = layout.box()
         box.label(text="Collection Preview:", icon='OUTLINER_COLLECTION')
+        box.label(text="Collection (/Game)")
         path_parts = [p for p in self.unreal_path.split('/') if p and p != 'Game']
         if path_parts:
             for i, part in enumerate(path_parts):
                 row = box.row()
-                row.label(text="  " * i + ("└ " if i > 0 else "") + part)
+                row.label(text="  " * (i + 1) + "└ " + part)
 
 
 def register():
