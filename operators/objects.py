@@ -42,13 +42,14 @@ def set_world_location(obj, item, operation):
     if item['worldData'] is not None:
         if item['worldData']['location'] is not None:
             if operation == "UnrealExport":
-                # Convert Unreal cm to Blender meters
-                obj.location.x = item['worldData']['location']['x'] * 0.01
-                obj.location.y = item['worldData']['location']['y'] * 0.01
-                obj.location.z = item['worldData']['location']['z'] * 0.01
+                # Scene unit scale (0.01) handles cm->m conversion
+                # Negate Y: Unreal (left-handed) to Blender (right-handed)
+                obj.location.x = item['worldData']['location']['x']
+                obj.location.y = -item['worldData']['location']['y']
+                obj.location.z = item['worldData']['location']['z']
             else:
                 obj.location.x = item['worldData']['location']['x']
-                obj.location.y = item['worldData']['location']['y']
+                obj.location.y = -item['worldData']['location']['y']
                 obj.location.z = item['worldData']['location']['z']
 
 
@@ -209,7 +210,7 @@ def get_first_mesh_transform_in_unreal_units(collection):
 
 # get object transform in unreal units
 def get_object_transform_in_unreal_units(obj):
-    transform = {'location': {'x': obj.location.x, 'y': obj.location.y, 'z': obj.location.z},
+    transform = {'location': {'x': obj.location.x, 'y': -obj.location.y, 'z': obj.location.z},  # Negate Y for Unreal
                  'rotation': get_object_rotation_in_degrees(obj),
                  'scale': {'x': obj.scale.x, 'y': obj.scale.y, 'z': obj.scale.z}}
     return transform
@@ -245,9 +246,28 @@ def prepare_armature_for_export(armature_obj):
     armature_obj.data.pose_position = 'REST'
     armature_obj['AB_currentLocation'] = armature_obj.location.copy()
     armature_obj['AB_currentRotation'] = armature_obj.rotation_euler.copy()
+    armature_obj['AB_currentScale'] = armature_obj.scale.copy()
     armature_obj['AB_originalPosePosition'] = original_pose_position
     armature_obj.location = (0, 0, 0)
     armature_obj.rotation_euler = (0, 0, 0)
+    armature_obj.scale = (0.1, 0.1, 0.1)  # Scale for Unreal export
+    bpy.context.view_layer.update()
+    return original_pose_position
+
+# DEPRECATED: Scale handling moved to imports.py
+def _unused_prepare_armature_for_import(armature_obj):
+    """Set scale for imported skeletal mesh. Call after glTF import."""
+    if armature_obj is None or armature_obj.type != "ARMATURE":
+        return None
+    original_pose_position = armature_obj.data.pose_position
+    armature_obj.data.pose_position = 'REST'
+    armature_obj['AB_currentLocation'] = armature_obj.location.copy()
+    armature_obj['AB_currentRotation'] = armature_obj.rotation_euler.copy()
+    armature_obj['AB_currentScale'] = armature_obj.scale.copy()
+    armature_obj['AB_originalPosePosition'] = original_pose_position
+    armature_obj.location = (0, 0, 0)
+    armature_obj.rotation_euler = (0, 0, 0)
+    armature_obj.scale = (0.01, 0.01, 0.01)  # Scale down imported skeletal mesh
     bpy.context.view_layer.update()
     return original_pose_position
 
@@ -265,3 +285,6 @@ def revert_armature_export(armature_obj):
     if 'AB_currentRotation' in armature_obj:
         armature_obj.rotation_euler = armature_obj['AB_currentRotation']
         del armature_obj['AB_currentRotation']
+    if 'AB_currentScale' in armature_obj:
+        armature_obj.scale = armature_obj['AB_currentScale']
+        del armature_obj['AB_currentScale']

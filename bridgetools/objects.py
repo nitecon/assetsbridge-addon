@@ -42,15 +42,10 @@ def set_world_rotation(obj, item, operation):
 def set_world_location(obj, item, operation):
     if item['worldData'] is not None:
         if item['worldData']['location'] is not None:
-            if operation == "UnrealExport":
-                # Convert Unreal cm to Blender meters
-                obj.location.x = item['worldData']['location']['x'] * 0.01
-                obj.location.y = item['worldData']['location']['y'] * 0.01
-                obj.location.z = item['worldData']['location']['z'] * 0.01
-            else:
-                obj.location.x = item['worldData']['location']['x']
-                obj.location.y = item['worldData']['location']['y']
-                obj.location.z = item['worldData']['location']['z']
+            # Scene unit scale (0.01) handles the cm->m conversion, so use values directly
+            obj.location.x = item['worldData']['location']['x']
+            obj.location.y = item['worldData']['location']['y']
+            obj.location.z = item['worldData']['location']['z']
 
 
 def set_world_scale(obj, item, operation):

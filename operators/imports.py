@@ -104,7 +104,37 @@ class BridgedImport(bpy.types.Operator):
         
         return from_unreal_path
 
+    def find_existing_object_by_id(self, object_id):
+        """Find an existing object in the scene by its AB_objectId custom property."""
+        for obj in bpy.data.objects:
+            if obj.get("AB_objectId") == object_id:
+                return obj
+        return None
+
+    def update_existing_object_transform(self, existing_obj, item, operation):
+        """Update the transform of an existing object with new worldData."""
+        item_type = item.get("stringType", "StaticMesh")
+        if item_type == "StaticMesh":
+            set_world_scale(existing_obj, item, operation)
+            set_world_rotation(existing_obj, item, operation)
+            set_world_location(existing_obj, item, operation)
+        elif item_type == "SkeletalMesh":
+            if existing_obj.get("AB_isExportRoot", False):
+                set_world_scale(existing_obj, item, operation)
+                set_world_rotation(existing_obj, item, operation)
+                set_world_location(existing_obj, item, operation)
+
     def process_and_import_object(self, item, operation):
+        object_id = item.get("objectId", "")
+        
+        # Check if object already exists in scene
+        if object_id:
+            existing_obj = self.find_existing_object_by_id(object_id)
+            if existing_obj:
+                self.update_existing_object_transform(existing_obj, item, operation)
+                self.report({"INFO"}, f"Position updated for existing object: {existing_obj.name}")
+                return
+        
         # Determine the collection hierarchy based on the internal path
         # Filter empty strings from split (handles leading slash in paths like "/Assets/...")
         collections_hierarchy = [p for p in item["internalPath"].split('/') if p]
@@ -144,7 +174,10 @@ class BridgedImport(bpy.types.Operator):
                 set_world_rotation(obj, item, operation)
                 set_world_location(obj, item, operation)
             elif item_type == "SkeletalMesh" and obj == root_obj:
-                obj.scale = (1.0, 1.0, 1.0)
+                obj.scale = (1, 1, 1)  # Scale down skeletal mesh from Unreal
+                set_world_scale(obj, item, operation)
+                set_world_rotation(obj, item, operation)
+                set_world_location(obj, item, operation)
     
     def find_import_root(self, imported_objs, item_type):
         """
