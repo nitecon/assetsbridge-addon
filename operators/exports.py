@@ -368,32 +368,40 @@ class BridgedExport(bpy.types.Operator):
             raw_materials = obj.get("AB_objectMaterials", [])
             return self.convert_to_serializable(raw_materials)
         
-        # Get stored materials for path lookup
-        stored_materials = {}
+        # Get stored materials for path lookup - index by position for reliable matching
+        stored_materials_by_idx = {}
         raw_stored = obj.get("AB_objectMaterials", [])
         if raw_stored:
             for mat in self.convert_to_serializable(raw_stored):
                 if isinstance(mat, dict):
-                    stored_materials[mat.get("name", "")] = mat
+                    # Index by original position (idx field)
+                    stored_materials_by_idx[mat.get("idx", -1)] = mat
         
         # Build materials list from current mesh state
         for idx, mat_slot in enumerate(mesh_obj.data.materials):
             mat_name = mat_slot.name if mat_slot else f"Material_{idx}"
             
-            # Try to find matching Unreal path from stored materials
-            stored_mat = stored_materials.get(mat_name, {})
+            # Match by index position - material slot order is preserved from Unreal
+            stored_mat = stored_materials_by_idx.get(idx, {})
             internal_path = stored_mat.get("internalPath", "")
-            original_idx = stored_mat.get("idx", -1)
-            if not internal_path:
-                # Default path for new materials
-                internal_path = "/Engine/EngineMaterials/WorldGridMaterial"
+            original_name = stored_mat.get("name", "")
             
-            materials.append({
-                "name": mat_name,
-                "idx": idx,
-                "internalPath": internal_path,
-                "originalIdx": original_idx
-            })
+            if internal_path:
+                # Use stored Unreal path if same slot position
+                materials.append({
+                    "name": mat_name,
+                    "idx": idx,
+                    "internalPath": internal_path,
+                    "originalIdx": idx
+                })
+            else:
+                # New material slot - default path
+                materials.append({
+                    "name": mat_name,
+                    "idx": idx,
+                    "internalPath": "/Engine/EngineMaterials/WorldGridMaterial",
+                    "originalIdx": -1
+                })
         
         return materials
     
@@ -401,52 +409,56 @@ class BridgedExport(bpy.types.Operator):
         """
         Generates a changeset comparing current mesh materials to original Unreal materials.
         Returns dict with 'added', 'removed', and 'unchanged' lists.
+        Uses index-based matching since material names change during import/export.
         """
         current_materials = self.get_current_materials(obj)
         
-        # Get original materials from stored property
-        stored_materials = {}
+        # Get original materials from stored property - index by position
+        stored_materials_by_idx = {}
         stored_list = []
         raw_stored = obj.get("AB_objectMaterials", [])
         if raw_stored:
             stored_list = self.convert_to_serializable(raw_stored)
             for mat in stored_list:
                 if isinstance(mat, dict):
-                    stored_materials[mat.get("name", "")] = mat
+                    stored_materials_by_idx[mat.get("idx", -1)] = mat
         
-        current_names = {m["name"] for m in current_materials}
-        stored_names = set(stored_materials.keys())
+        current_indices = {m["idx"] for m in current_materials}
+        stored_indices = set(stored_materials_by_idx.keys())
         
         added = []
         removed = []
         unchanged = []
         
-        # Find added materials (in current but not in stored)
+        # Compare by index position
         for mat in current_materials:
-            if mat["name"] not in stored_names:
+            idx = mat["idx"]
+            if idx in stored_materials_by_idx:
+                # Same slot position - material is unchanged (path preserved)
+                stored_mat = stored_materials_by_idx[idx]
+                unchanged.append({
+                    "name": mat["name"],
+                    "idx": idx,
+                    "internalPath": stored_mat.get("internalPath", mat["internalPath"]),
+                    "originalIdx": idx
+                })
+            else:
+                # New material slot added
                 added.append({
                     "name": mat["name"],
-                    "idx": mat["idx"],
+                    "idx": idx,
                     "internalPath": mat["internalPath"],
                     "originalIdx": -1
                 })
-            else:
-                # Unchanged - restore original Unreal material
-                unchanged.append({
-                    "name": mat["name"],
-                    "idx": mat["idx"],
-                    "internalPath": stored_materials[mat["name"]].get("internalPath", ""),
-                    "originalIdx": stored_materials[mat["name"]].get("idx", mat["idx"])
-                })
         
-        # Find removed materials (in stored but not in current)
-        for name, mat in stored_materials.items():
-            if name not in current_names:
+        # Find removed materials (stored indices not in current)
+        for idx, mat in stored_materials_by_idx.items():
+            if idx not in current_indices:
                 removed.append({
-                    "name": name,
+                    "name": mat.get("name", ""),
                     "idx": -1,
                     "internalPath": mat.get("internalPath", ""),
-                    "originalIdx": mat.get("idx", -1)
+                    "originalIdx": idx
                 })
         
         return {
