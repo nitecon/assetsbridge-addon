@@ -87,6 +87,26 @@ class AssetsBridgePreferences(AddonPreferences):
     filepaths: CollectionProperty(
         name="File paths",
         type=AssetBridgeFilePaths)
+    
+    static_mesh_export_scale: FloatProperty(
+        name="Static Mesh Export Scale",
+        description="Scale multiplier for static mesh exports to Unreal Engine",
+        default=0.01,
+        min=0.0001,
+        max=100.0,
+        precision=4,
+        step=1
+    )
+    
+    skeletal_mesh_export_scale: FloatProperty(
+        name="Skeletal Mesh Export Scale",
+        description="Scale multiplier for skeletal mesh exports to Unreal Engine",
+        default=0.1,
+        min=0.0001,
+        max=100.0,
+        precision=4,
+        step=1
+    )
 
     def draw(self, context):
         self.layout.label(text="Browse to any file in the AssetsBridge directory.")
@@ -94,6 +114,11 @@ class AssetsBridgePreferences(AddonPreferences):
         for i in self.filepaths:
             if i.display:
                 self.layout.prop(i, "path")
+        
+        self.layout.separator()
+        self.layout.label(text="Export Settings:")
+        self.layout.prop(self, "static_mesh_export_scale")
+        self.layout.prop(self, "skeletal_mesh_export_scale")
 
 
 filepath_list = {
@@ -141,6 +166,15 @@ class AssetsBridgePanel(bpy.types.Panel):
         row.operator(operators.TransferShapeKeys.bl_idname, text="Transfer All Shape Keys", icon='SHAPEKEY_DATA')
         row = layout.row()
         row.operator(operators.SelectiveTransferShapeKeys.bl_idname, text="Selective Transfer", icon='CHECKBOX_HLT')
+        
+        layout.separator()
+        row = layout.row()
+        row.label(text="Export Settings", icon='PREFERENCES')
+        prefs = context.preferences.addons[__name__].preferences
+        row = layout.row()
+        row.prop(prefs, "static_mesh_export_scale", text="Static Mesh Scale")
+        row = layout.row()
+        row.prop(prefs, "skeletal_mesh_export_scale", text="Skeletal Mesh Scale")
 
 
 _class_registers = [

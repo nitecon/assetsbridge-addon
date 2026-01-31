@@ -21,6 +21,25 @@ import math
 # ##### END GPL LICENSE BLOCK #####
 import bpy
 
+
+def get_export_scale(mesh_type="static"):
+    """Get export scale from addon preferences.
+    
+    Args:
+        mesh_type: "static" or "skeletal"
+    
+    Returns:
+        Float scale value from preferences, or default if preferences unavailable.
+    """
+    try:
+        prefs = bpy.context.preferences.addons["AssetsBridge"].preferences
+        if mesh_type == "skeletal":
+            return prefs.skeletal_mesh_export_scale
+        return prefs.static_mesh_export_scale
+    except (KeyError, AttributeError):
+        # Fallback defaults if preferences not available
+        return 0.1 if mesh_type == "skeletal" else 0.01
+
 def setup_import(obj, item, operation):
     if obj is None or not hasattr(obj, "type"):
         return
@@ -64,8 +83,9 @@ def prepare_for_export(obj):
     obj.location.x = 0
     obj.location.y = 0
     obj.location.z = 0
-    # Set scale for Unreal export (0.01 for static meshes)
-    obj.scale = (0.01, 0.01, 0.01)
+    # Set scale for Unreal export (uses user-configured scale from preferences)
+    export_scale = get_export_scale("static")
+    obj.scale = (export_scale, export_scale, export_scale)
     # NEVER apply transforms to armatures - this breaks bind pose for Unreal
     if obj.type != "ARMATURE":
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=False)
@@ -256,7 +276,8 @@ def prepare_armature_for_export(armature_obj):
     armature_obj['AB_originalPosePosition'] = original_pose_position
     armature_obj.location = (0, 0, 0)
     armature_obj.rotation_euler = (0, 0, 0)
-    armature_obj.scale = (0.1, 0.1, 0.1)  # Scale for Unreal export
+    export_scale = get_export_scale("skeletal")
+    armature_obj.scale = (export_scale, export_scale, export_scale)
     bpy.context.view_layer.update()
     return original_pose_position
 
