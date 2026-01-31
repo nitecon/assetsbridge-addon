@@ -52,21 +52,24 @@ def set_world_location(obj, item, operation):
                 obj.location.y = -item['worldData']['location']['y']
                 obj.location.z = item['worldData']['location']['z']
 
-
 def prepare_for_export(obj):
     if obj is None or not hasattr(obj, "type"):
         return
     # Store the current location, rotation and scale
     obj['AB_currentLocation'] = obj.location.copy()
     obj['AB_currentRotation'] = obj.rotation_euler.copy()
+    obj['AB_currentScale'] = obj.scale.copy()
     # now we set the location to 0,0,0
     rotate_object_in_degrees(obj, 0, 0, 0)
     obj.location.x = 0
     obj.location.y = 0
     obj.location.z = 0
+    # Set scale for Unreal export (0.01 for static meshes)
+    obj.scale = (0.01, 0.01, 0.01)
     # NEVER apply transforms to armatures - this breaks bind pose for Unreal
     if obj.type != "ARMATURE":
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=False)
+    bpy.context.view_layer.update()
 
 
 def revert_export_mods(obj):
@@ -74,6 +77,9 @@ def revert_export_mods(obj):
         return
     obj.location = obj['AB_currentLocation']
     obj.rotation_euler = obj['AB_currentRotation']
+    if 'AB_currentScale' in obj:
+        obj.scale = obj['AB_currentScale']
+        del obj['AB_currentScale']
 
 
 def set_world_scale(obj, item, operation):
