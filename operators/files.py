@@ -93,5 +93,6 @@ def is_bridge_configured():
     paths = get_addon_preferences().filepaths
     if not paths or not paths[0].path:
         return False
-    default_path = "//AssetsBridge.json"
-    return paths[0].path != default_path and paths[0].path != ""
+    # Sentinel values that indicate the bridge directory has not been configured yet.
+    unconfigured = ("AssetsBridge.json", "//AssetsBridge.json", "")
+    return paths[0].path not in unconfigured

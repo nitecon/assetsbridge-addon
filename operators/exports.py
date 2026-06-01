@@ -23,6 +23,8 @@ import bpy
 from .gltf import *
 from .files import write_bridge_file, get_from_blender_path, is_bridge_configured, get_bridge_directory
 from .objects import *
+from .bake import build_textures_manifest_block
+from .collision import check_ucx_before_export
 
 
 class BridgedExport(bpy.types.Operator):
@@ -57,7 +59,10 @@ class BridgedExport(bpy.types.Operator):
         if not export_roots:
             self.report({'ERROR'}, "No valid exportable objects found in selection.")
             return {'CANCELLED'}
-        
+
+        # Warn (or auto-generate) when a static mesh has no UCX_ collision in the scene.
+        check_ucx_before_export(self, context, export_roots)
+
         new_data = {'operation': 'BlenderExport', 'objects': []}
         self.report({'INFO'}, f"Export process started - found {len(export_roots)} asset(s) to export")
         
@@ -110,7 +115,12 @@ class BridgedExport(bpy.types.Operator):
                 self.setup_naming(root_obj)
                 self.prepare_object(root_obj)
                 export_options = get_unreal_export_opts()
-                
+                # Baked-PBR assets define their look via the manifest's texture set + a
+                # master-material instance on the UE side, so we drop glTF materials to avoid
+                # Interchange importing duplicate embedded textures/materials into a subfolder.
+                if root_obj.get("AB_textures"):
+                    export_options["export_materials"] = "NONE"
+
                 bpy.ops.object.select_all(action='DESELECT')
                 root_obj.select_set(True)
                 
@@ -341,6 +351,7 @@ class BridgedExport(bpy.types.Operator):
             },
             "objectMaterials": materials,
             "materialChangeset": material_changeset,
+            "textures": build_textures_manifest_block(obj),
         }
 
         return ob_info

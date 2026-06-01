@@ -19,15 +19,16 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import bpy
-from bpy.props import StringProperty, CollectionProperty, BoolProperty, FloatProperty
+from bpy.props import StringProperty, CollectionProperty, BoolProperty, FloatProperty, EnumProperty, IntProperty
 from bpy.types import PropertyGroup, AddonPreferences
 
 from . import operators
+from .operators.bake import RESOLUTION_ITEMS
 
 bl_info = {
     "name": "AssetsBridge",
     "author": "Nitecon Studios LLC.",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Toolbar > AssetsBridge",
     "description": "AssetsBridge provides bi directional integration with unreal engine.",
@@ -108,21 +109,68 @@ class AssetsBridgePreferences(AddonPreferences):
         step=1
     )
 
+    # --- PBR bake settings ---
+    bake_resolution: EnumProperty(
+        name="Bake Resolution",
+        description="Output resolution for baked PBR textures",
+        items=RESOLUTION_ITEMS,
+        default='2048'
+    )
+    bake_margin: IntProperty(
+        name="Bake Margin (px)",
+        description="Edge padding added around UV islands to avoid seams",
+        default=8, min=0, max=64
+    )
+    bake_samples: IntProperty(
+        name="Bake Samples",
+        description="Cycles samples per bake pass",
+        default=16, min=1, max=256
+    )
+    normal_flip_green: BoolProperty(
+        name="Flip Normal Green (DirectX for UE)",
+        description="Invert the normal map green channel so it matches Unreal's DirectX convention",
+        default=True
+    )
+
+    # --- UCX collision settings ---
+    warn_missing_ucx: BoolProperty(
+        name="Warn if UCX collision missing",
+        description="Warn on export when a static mesh has no UCX_ collision mesh",
+        default=True
+    )
+    auto_generate_ucx: BoolProperty(
+        name="Auto-generate convex UCX on export",
+        description="Automatically create a convex-hull UCX collision when one is missing",
+        default=False
+    )
+
     def draw(self, context):
         self.layout.label(text="Browse to any file in the AssetsBridge directory.")
         self.layout.label(text="The addon will use from-unreal.json (import) and from-blender.json (export).")
         for i in self.filepaths:
             if i.display:
                 self.layout.prop(i, "path")
-        
+
         self.layout.separator()
         self.layout.label(text="Export Settings:")
         self.layout.prop(self, "static_mesh_export_scale")
         self.layout.prop(self, "skeletal_mesh_export_scale")
 
+        self.layout.separator()
+        self.layout.label(text="PBR Bake Settings:")
+        self.layout.prop(self, "bake_resolution")
+        self.layout.prop(self, "bake_samples")
+        self.layout.prop(self, "bake_margin")
+        self.layout.prop(self, "normal_flip_green")
+
+        self.layout.separator()
+        self.layout.label(text="Collision Settings:")
+        self.layout.prop(self, "warn_missing_ucx")
+        self.layout.prop(self, "auto_generate_ucx")
+
 
 filepath_list = {
-    "AssetsBridge": "//AssetsBridge.json"
+    "AssetsBridge": "AssetsBridge.json"
 }
 
 
@@ -158,7 +206,20 @@ class AssetsBridgePanel(bpy.types.Panel):
         
         row = layout.row()
         row.operator(operators.AssignUE5Skeleton.bl_idname, text="Assign UE5 Skeleton", icon='ARMATURE_DATA')
-        
+
+        row = layout.row()
+        row.operator(operators.ReorganizeToContainer.bl_idname, text="Reorganize to Container", icon='OUTLINER_COLLECTION')
+
+        layout.separator()
+        row = layout.row()
+        row.label(text="Texture Tools", icon='TEXTURE')
+
+        row = layout.row()
+        row.operator(operators.BridgedBakePBR.bl_idname, text="Bake PBR", icon='RENDER_STILL')
+
+        row = layout.row()
+        row.operator(operators.GenerateUCXCollision.bl_idname, text="Generate UCX", icon='MESH_CUBE')
+
         layout.separator()
         row = layout.row()
         row.label(text="Shape Key Tools", icon='SHAPEKEY_DATA')

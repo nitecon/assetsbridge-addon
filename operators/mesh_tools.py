@@ -20,6 +20,46 @@
 
 import bpy
 import bmesh
+import os
+
+
+def get_top_collection():
+    """
+    Finds the top-level 'Collection' in the Blender scene, creating it if absent.
+    This matches the import behavior where /Game maps to 'Collection'.
+    """
+    for coll in bpy.data.collections:
+        if any(coll.name in scene.collection.children for scene in bpy.data.scenes):
+            if coll.name == "Collection":
+                return coll
+    new_coll = bpy.data.collections.new("Collection")
+    bpy.context.scene.collection.children.link(new_coll)
+    return new_coll
+
+
+def get_or_create_collection_hierarchy(unreal_path):
+    """
+    Create a collection hierarchy mirroring an Unreal path: /Game maps to 'Collection',
+    the rest nests under it. e.g. /Game/Assets/Wearables -> Collection > Assets > Wearables.
+    """
+    path_parts = [p for p in unreal_path.split('/') if p and p != 'Game']
+    if not path_parts:
+        return get_top_collection()
+
+    parent_collection = get_top_collection()
+    for part in path_parts:
+        existing = None
+        for child in parent_collection.children:
+            if child.name == part:
+                existing = child
+                break
+        if existing:
+            parent_collection = existing
+        else:
+            new_collection = bpy.data.collections.new(part)
+            parent_collection.children.link(new_collection)
+            parent_collection = new_collection
+    return parent_collection
 
 
 class SplitToNewMesh(bpy.types.Operator):
@@ -523,48 +563,10 @@ class SetUnrealExportPath(bpy.types.Operator):
         return {'FINISHED'}
 
     def get_top_collection(self):
-        """
-        Finds the top-level 'Collection' in the Blender scene.
-        If it does not exist, it creates one.
-        This matches the import behavior where /Game maps to 'Collection'.
-        """
-        for coll in bpy.data.collections:
-            if any(coll.name in scene.collection.children for scene in bpy.data.scenes):
-                if coll.name == "Collection":
-                    return coll
-
-        new_coll = bpy.data.collections.new("Collection")
-        bpy.context.scene.collection.children.link(new_coll)
-        return new_coll
+        return get_top_collection()
 
     def get_or_create_collection_hierarchy(self, unreal_path):
-        """
-        Creates collection hierarchy matching Unreal path structure.
-        /Game maps to 'Collection', then the rest of the path is nested under it.
-        Example: /Game/Assets/Wearables/Armor -> Collection > Assets > Wearables > Armor
-        """
-        path_parts = [p for p in unreal_path.split('/') if p and p != 'Game']
-
-        if not path_parts:
-            return self.get_top_collection()
-
-        parent_collection = self.get_top_collection()
-
-        for part in path_parts:
-            existing = None
-            for child in parent_collection.children:
-                if child.name == part:
-                    existing = child
-                    break
-
-            if existing:
-                parent_collection = existing
-            else:
-                new_collection = bpy.data.collections.new(part)
-                parent_collection.children.link(new_collection)
-                parent_collection = new_collection
-
-        return parent_collection
+        return get_or_create_collection_hierarchy(unreal_path)
 
     def invoke(self, context, event):
         obj = context.active_object
@@ -601,13 +603,119 @@ class SetUnrealExportPath(bpy.types.Operator):
                 row.label(text="  " * (i + 1) + "└ " + part)
 
 
+class ReorganizeToContainer(bpy.types.Operator):
+    """Move a mesh and its baked textures into the collection/container that mirrors its Unreal content path"""
+    bl_idname = "assetsbridge.reorganize_to_container"
+    bl_label = "Reorganize to Container"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    unreal_path: bpy.props.StringProperty(
+        name="Unreal Path",
+        description="Unreal Engine content path (e.g., /Game/Meshes/Credit)",
+        default="/Game/Meshes"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        obj = context.active_object
+
+        obj["AB_internalPath"] = self.unreal_path
+        obj["AB_relativeExportPath"] = self.unreal_path
+
+        # Move object into the mirrored collection hierarchy.
+        target_collection = get_or_create_collection_hierarchy(self.unreal_path)
+        for coll in obj.users_collection:
+            coll.objects.unlink(obj)
+        target_collection.objects.link(obj)
+
+        # Relocate any baked textures on disk to the new Textures dir and rewrite paths.
+        moved = self._relocate_textures(obj)
+
+        msg = "Moved '%s' to '%s'" % (obj.name, self.unreal_path)
+        if moved:
+            msg += " (%d texture(s) relocated)" % moved
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+    def _relocate_textures(self, obj):
+        stored = obj.get("AB_textures")
+        if not stored:
+            return 0
+        stored = dict(stored) if hasattr(stored, "keys") else {}
+        if not stored:
+            return 0
+
+        # Textures live next to the GLB, under <bridge>/<internalPath>/Textures. Without a
+        # configured bridge directory we cannot resolve an absolute destination, so leave the
+        # files in place and only update path metadata (export will recompute locations).
+        from .files import get_bridge_directory
+        bridge = get_bridge_directory()
+        if not bridge:
+            self.report({'WARNING'},
+                        "Bridge directory not configured - textures left in place; "
+                        "only path metadata updated.")
+            return 0
+
+        internal = (obj.get("AB_internalPath", "") or "").lstrip("/")
+        new_dir = os.path.normpath(os.path.join(bridge, internal, "Textures"))
+        os.makedirs(new_dir, exist_ok=True)
+
+        updated = {}
+        moved = 0
+        for role, old_path in stored.items():
+            old_path = str(old_path)
+            new_path = os.path.normpath(os.path.join(new_dir, os.path.basename(old_path)))
+            if os.path.isfile(old_path) and os.path.normpath(old_path) != new_path:
+                try:
+                    os.replace(old_path, new_path)
+                    moved += 1
+                except OSError:
+                    new_path = old_path
+            updated[role] = new_path.replace("\\", "/")
+        obj["AB_textures"] = updated
+
+        # Keep the export location consistent with the new container.
+        short = obj.get("AB_shortName", obj.name)
+        obj["AB_exportLocation"] = os.path.normpath(os.path.join(bridge, internal, short + ".glb"))
+        return moved
+
+    def invoke(self, context, event):
+        obj = context.active_object
+        if obj:
+            existing = obj.get("AB_internalPath", "")
+            if existing:
+                self.unreal_path = existing
+        return context.window_manager.invoke_props_dialog(self, width=400)
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        if obj:
+            box = layout.box()
+            box.label(text=f"Object: {obj.name}", icon='OBJECT_DATA')
+            if obj.get("AB_textures"):
+                box.label(text="Baked textures will be relocated too.", icon='TEXTURE')
+        layout.separator()
+        layout.prop(self, "unreal_path")
+        box = layout.box()
+        box.label(text="Collection Preview:", icon='OUTLINER_COLLECTION')
+        box.label(text="Collection (/Game)")
+        for i, part in enumerate([p for p in self.unreal_path.split('/') if p and p != 'Game']):
+            box.row().label(text="  " * (i + 1) + "└ " + part)
+
+
 def register():
     bpy.utils.register_class(SplitToNewMesh)
     bpy.utils.register_class(AssignUE5Skeleton)
     bpy.utils.register_class(SetUnrealExportPath)
+    bpy.utils.register_class(ReorganizeToContainer)
 
 
 def unregister():
+    bpy.utils.unregister_class(ReorganizeToContainer)
     bpy.utils.unregister_class(SplitToNewMesh)
     bpy.utils.unregister_class(AssignUE5Skeleton)
     bpy.utils.unregister_class(SetUnrealExportPath)
