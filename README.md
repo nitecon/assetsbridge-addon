@@ -35,8 +35,13 @@ While each component can be used independently, the full workflow requires both:
 
 ### Mesh Tools
 - **Split to New Mesh** - Separate faces into new wearable pieces (preserves weights, shape keys)
-- **Set Unreal Object Path** - Configure Unreal destination path for entire object hierarchies
+- **Set Unreal Export Path** - Configure the Unreal destination path for an object and optionally move it into a matching collection hierarchy
+- **Reorganize to Container** - Move a mesh (and its baked textures) into the collection/container that mirrors its Unreal content path
 - **Assign UE5 Skeleton** - Reuse existing skeleton on reimport instead of creating new
+
+### Texture Tools
+- **Bake PBR** - Bake a mesh's procedural/Principled materials into a UE-ready PBR texture set: `T_<asset>_D` (BaseColor, sRGB), `T_<asset>_ORM` (packed R=AO, G=Roughness, B=Metallic), `T_<asset>_N` (tangent-space normal, DirectX/green-flipped for Unreal), and `T_<asset>_E` (emissive). Auto re-unwraps degenerate UVs (Smart UV Project), can consolidate to a single material, and writes a `textures` manifest block into `from-blender.json` targeting the `M_ORM` master material.
+- **Generate UCX** - Create a convex-hull `UCX_<name>` collision mesh for a static mesh so Unreal imports per-asset collision
 
 ### Shape Key Tools
 - **Transfer All Shape Keys** - Copy morph targets between meshes using closest-point mapping
@@ -77,8 +82,13 @@ While each component can be used independently, the full workflow requires both:
 
 ### Mesh Tools
 - **Split to New Mesh** - Select faces in Edit Mode, click Split to New Mesh, configure name and path
-- **Set Unreal Object Path** - Set destination like `/Game/Assets/Wearables/Armor/SK_F_Trooper`
+- **Set Export Path** - Set destination like `/Game/Assets/Wearables/Armor/SK_F_Trooper` (optionally move the object to a matching collection)
+- **Reorganize to Container** - Select the object, click Reorganize to Container, and enter a `/Game/...` path; the mesh moves into the mirrored collection and any baked textures are relocated to the new `Textures` folder
 - **Assign UE5 Skeleton** - Link mesh to existing skeleton: `/Game/Characters/Skeleton`
+
+### Texture Tools
+- **Bake PBR** - Select a mesh with node-based materials, click **Bake PBR**, and choose resolution/samples/margin. The bake produces the `T_<asset>_{D,ORM,N,E}.png` set in a `Textures` folder next to the exported asset and records it for export. On the next **Export Selected**, the texture set plus an `MI_<asset>` material-instance reference (driven by the `/Game/Materials/_Core/M_ORM` master) are written into `from-blender.json` for the UE plugin to import.
+- **Generate UCX** - Select a static mesh and click **Generate UCX** to add a convex-hull `UCX_<name>_##` collision. If `Auto-generate convex UCX on export` is enabled in preferences, missing collisions are created automatically on export; otherwise a warning is shown when `Warn if UCX collision missing` is on.
 
 ## Supported Asset Types
 
@@ -101,12 +111,17 @@ While each component can be used independently, the full workflow requires both:
 | "Import file not found" | Export from Unreal first to create `from-unreal.json` |
 | Objects not appearing in Unreal | Ensure the UE plugin is configured to the same bridge directory |
 | Skeleton mismatch on import | Use **Assign UE5 Skeleton** to specify which skeleton to reuse |
-| Collection hierarchy wrong | Use **Set Unreal Object Path** to fix the `/Game/...` path |
+| Collection hierarchy wrong | Use **Set Export Path** or **Reorganize to Container** to fix the `/Game/...` path |
+| Unreal generates wrong collision | Use **Generate UCX** to author a `UCX_<name>` convex collision before export |
+| Baked textures import into the wrong UE folder | Re-run **Reorganize to Container** so the `Textures` path matches the asset's `/Game/...` container |
 
 ## Documentation
 
 Detailed documentation available in [Docs](./Docs/):
-- **[MeshTools](./Docs/Meshtools.md)** - Split to New Mesh, Set Unreal Object Path, Assign UE5 Skeleton
+- **[Docs Index](./Docs/README.md)** - Documentation table of contents
+- **[MeshTools](./Docs/Meshtools.md)** - Split to New Mesh, Set Unreal Export Path, Reorganize to Container, Assign UE5 Skeleton
+- **[Texture Tools](./Docs/TextureTools.md)** - PBR bake pipeline (BaseColor/ORM/Normal/Emissive), ORM channel packing, the `from-blender.json` textures block
+- **[Collision](./Docs/Collision.md)** - UCX collision pre-check and Generate UCX
 
 ## Support
 
