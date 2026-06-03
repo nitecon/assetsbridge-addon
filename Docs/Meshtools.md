@@ -6,6 +6,7 @@
 
 - [Split to New Mesh](#split-to-new-mesh)
 - [Set Unreal Export Path](#set-unreal-export-path)
+- [Reorganize to Container](#reorganize-to-container)
 - [Assign UE5 Skeleton](#assign-ue5-skeleton)
 - [Selective Shape Key Transfer](#selective-shape-key-transfer)
 
@@ -48,6 +49,23 @@ Sets the Unreal export destination path for any object and optionally moves it t
 2. Click **Set Export Path**
 3. Enter the Unreal path (e.g., `/Game/Characters/Armor/Chest`)
 4. Enable **Move to Collection** to reorganize the object in Blender
+
+## Reorganize to Container
+
+**Operator:** `assetsbridge.reorganize_to_container`
+
+Moves a mesh into the Blender collection/container that mirrors its Unreal content path, and relocates any baked textures to match.
+
+### Usage
+1. Select the object
+2. Click **Reorganize to Container** in the AssetsBridge panel
+3. Enter the Unreal path (e.g. `/Game/Meshes/Credit`) — the dialog previews the resulting collection hierarchy
+4. Click OK
+
+### Behavior
+- Sets the object's `AB_internalPath` and `AB_relativeExportPath` to the chosen path
+- Unlinks the object from its current collections and links it into the `/Game`-mirrored collection hierarchy
+- If the object has baked textures (`AB_textures`) and the bridge directory is configured, the PNGs are moved into the new `<bridge>/<internalPath>/Textures` folder and the stored paths plus `AB_exportLocation` are rewritten. When no bridge directory is configured, the files are left in place and only the path metadata is updated (export recomputes locations).
 
 ## Assign UE5 Skeleton
 
